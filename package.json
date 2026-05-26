@@ -1,0 +1,51 @@
+{
+  "name": "@zylem/arena",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Standalone Zylem arena example.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/zylem-game-lib/arena.git"
+  },
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=10.32.1"
+  },
+  "scripts": {
+    "dev": "vite --host",
+    "build": "cross-env NODE_ENV=production vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "server:build": "sh server/scripts/run-spacetimedb-cli.sh build -p server/spacetimedb",
+    "server:generate:bindings": "sh server/scripts/run-spacetimedb-cli.sh generate --lang typescript -o src/spacetimedb-generated -p server/spacetimedb -y",
+    "server:publish:arena": "sh server/scripts/run-spacetimedb-cli.sh publish arena -s local -p server/spacetimedb",
+    "server:start": "bash server/scripts/start-spacetimedb-server.sh",
+    "server:dev": "pnpm run server:build && pnpm run server:publish:arena"
+  },
+  "dependencies": {
+    "@solidjs/router": "^0.14.10",
+    "@vanilla-extract/css": "^1.20.1",
+    "@zylem/assets": "^0.1.1",
+    "@zylem/behaviors": "file:../behaviors",
+    "@zylem/game-lib": "file:../zylem/packages/game-lib",
+    "@zylem/styles": "file:../zylem/packages/zylem-styles",
+    "nanoid": "^5.1.5",
+    "solid-js": "^1.9.9",
+    "spacetimedb": "2.1.0",
+    "three": "^0.180.0",
+    "valtio": "^2.1.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.13",
+    "@types/three": "0.171.0",
+    "@vanilla-extract/vite-plugin": "^5.2.2",
+    "cross-env": "^10.1.0",
+    "typescript": "5.8.2",
+    "vite": "7.0.4",
+    "vite-plugin-glsl": "^1.5.4",
+    "vite-plugin-solid": "^2.11.8"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

@@ -1,0 +1,8 @@
+node_modules
+dist
+.DS_Store
+*.tsbuildinfo
+server/.data
+server/.playwright-mcp
+server/spacetimedb/dist
+server/spacetimedb/node_modules

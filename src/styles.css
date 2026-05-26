@@ -1,0 +1,91 @@
+html,
+body,
+#root {
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	overflow: hidden;
+	background: #05060a;
+}
+
+body {
+	font-family:
+		"Trebuchet MS",
+		"Gill Sans",
+		system-ui,
+		sans-serif;
+	color: #f6f4ec;
+}
+
+.arena-shell {
+	display: grid;
+	width: 100%;
+	height: 100%;
+	place-items: center;
+	background:
+		radial-gradient(circle at 50% 35%, rgba(106, 143, 255, 0.16), transparent 36rem),
+		linear-gradient(135deg, #05060a 0%, #111827 48%, #071014 100%);
+}
+
+.arena-stage {
+	position: relative;
+	width: min(100vw, 1280px);
+	height: min(100vh, 820px);
+	overflow: hidden;
+	background: #05060a;
+	box-shadow: 0 20px 80px rgba(0, 0, 0, 0.55);
+}
+
+.arena-game {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.arena-loading {
+	position: absolute;
+	inset: 0;
+	z-index: 80;
+	display: grid;
+	place-items: center;
+	background: rgba(3, 5, 10, 0.5);
+	backdrop-filter: blur(6px);
+}
+
+.arena-loading-card {
+	width: min(22rem, calc(100vw - 2rem));
+	padding: 1rem;
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	border-radius: 1rem;
+	background: rgba(8, 10, 18, 0.82);
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.arena-loading-title {
+	font-size: 0.9rem;
+	font-weight: 800;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.arena-progress {
+	height: 0.5rem;
+	margin: 0.7rem 0;
+	overflow: hidden;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.12);
+}
+
+.arena-progress-fill {
+	height: 100%;
+	border-radius: inherit;
+	background: linear-gradient(90deg, #e99f3a, #f5e07b);
+	transition: width 160ms ease-out;
+}
+
+.arena-loading-message {
+	min-height: 1.2rem;
+	font-size: 0.85rem;
+	color: rgba(246, 244, 236, 0.7);
+}
+
