@@ -26,7 +26,7 @@ function App() {
 	const [loading, setLoading] = createSignal(true);
 	const [progress, setProgress] = createSignal(0);
 	const [message, setMessage] = createSignal('Loading arena...');
-	const [, setLobbyRevision] = createSignal(0);
+	const [lobbyRevision, setLobbyRevision] = createSignal(0);
 
 	const handleLoadingEvent = (event: GameLoadingPayload) => {
 		setProgress(event.progress ?? 0);
@@ -58,7 +58,10 @@ function App() {
 		});
 	});
 
-	const showArenaLobby = () => !arenaLobbyStore.lobbyDismissed;
+	const showArenaLobby = () => {
+		lobbyRevision();
+		return !arenaLobbyStore.lobbyDismissed;
+	};
 
 	return (
 		<main class="arena-shell">
