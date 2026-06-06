@@ -1,6 +1,6 @@
-# Zylem Arena
+# Zylem Moba
 
-Standalone repository for the Zylem arena example.
+Standalone repository for the Zylem moba example.
 
 ## Requirements
 
