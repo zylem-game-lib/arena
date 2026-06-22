@@ -14,6 +14,7 @@
     "pnpm": ">=10.32.1"
   },
   "scripts": {
+    "moba": "node scripts/moba.mjs",
     "dev": "vite --host",
     "build": "cross-env NODE_ENV=production vite build",
     "preview": "vite preview",
@@ -25,27 +26,38 @@
     "server:dev": "pnpm run server:build && pnpm run server:publish:arena"
   },
   "dependencies": {
-    "@solidjs/router": "^0.14.10",
+    "@solidjs/router": "^0.16.1",
     "@vanilla-extract/css": "^1.20.1",
     "@zylem/assets": "^0.1.1",
-    "@zylem/behaviors": "file:../behaviors",
-    "@zylem/game-lib": "file:../zylem/packages/game-lib",
+    "@zylem/behaviors": "^0.3.0",
+    "@zylem/game-lib": "^0.7.0",
     "@zylem/styles": "file:../zylem/packages/zylem-styles",
-    "nanoid": "^5.1.5",
-    "solid-js": "^1.9.9",
+    "nanoid": "^5.1.15",
+    "solid-js": "^1.9.13",
     "spacetimedb": "2.1.0",
-    "three": "^0.180.0",
-    "valtio": "^2.1.7"
+    "three": "^0.184.0",
+    "valtio": "^2.3.2"
   },
   "devDependencies": {
-    "@types/node": "^20.19.13",
-    "@types/three": "0.171.0",
+    "@clack/prompts": "^1.6.0",
+    "@types/node": "^22.10.0",
+    "@types/three": "^0.184.1",
     "@vanilla-extract/vite-plugin": "^5.2.2",
     "cross-env": "^10.1.0",
-    "typescript": "5.8.2",
-    "vite": "7.0.4",
-    "vite-plugin-glsl": "^1.5.4",
-    "vite-plugin-solid": "^2.11.8"
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vite-plugin-glsl": "^1.6.0",
+    "vite-plugin-solid": "^2.11.12"
+  },
+  "pnpm": {
+    "overrides": {
+      "@dimforge/rapier3d-compat": "0.11.2"
+    },
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "@zylem/behaviors>three": "0.184.0"
+      }
+    }
   },
   "packageManager": "pnpm@10.33.0"
 }
