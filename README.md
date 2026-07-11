@@ -51,4 +51,16 @@ Create a single **Web Service** (Node 22+) that serves the Vite client and proxi
 
 `render:start` runs SpacetimeDB on `127.0.0.1:3000`, publishes the `arena` module, then serves `dist/` on `$PORT` with `/v1/*` (HTTP + WebSocket) reverse-proxied to SpacetimeDB. Leave `VITE_STDB_URI` unset so the client uses `window.location.origin`.
 
-SpacetimeDB data under `server/.data` lives on the instance disk and is ephemeral unless you attach a Render persistent disk.
+### Persistent SpacetimeDB data
+
+Without a disk, SpacetimeDB state under `server/.data` is wiped on redeploy. To keep it across deploys:
+
+1. In the Render dashboard, add a **Disk** (1 GB is enough to start).
+2. Set the mount path to `/var/data`.
+3. Redeploy. `render:start` detects `/var/data` and stores data at `/var/data/spacetimedb`.
+
+Optional override (if you use a different mount path):
+
+```
+SPACETIME_SERVER_DATA_DIR=/var/data/spacetimedb
+```

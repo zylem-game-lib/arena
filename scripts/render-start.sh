@@ -9,9 +9,19 @@ export RENDER="${RENDER:-true}"
 export SPACETIME_AUTO_INSTALL_TOOLCHAIN="${SPACETIME_AUTO_INSTALL_TOOLCHAIN:-1}"
 # Bind SpacetimeDB internally; the Node proxy owns Render's public $PORT.
 export SPACETIME_SERVER_LISTEN_ADDR="${SPACETIME_SERVER_LISTEN_ADDR:-127.0.0.1:3000}"
-export SPACETIME_SERVER_DATA_DIR="${SPACETIME_SERVER_DATA_DIR:-${_repo_root}/server/.data/spacetimedb}"
 export SPACETIME_PROXY_TARGET="${SPACETIME_PROXY_TARGET:-http://127.0.0.1:3000}"
 export PORT="${PORT:-10000}"
+
+# Prefer an explicit override, then a Render disk mount at /var/data, else repo-local.
+if [[ -n "${SPACETIME_SERVER_DATA_DIR:-}" ]]; then
+  :
+elif [[ -d /var/data ]]; then
+  export SPACETIME_SERVER_DATA_DIR="/var/data/spacetimedb"
+else
+  export SPACETIME_SERVER_DATA_DIR="${_repo_root}/server/.data/spacetimedb"
+fi
+mkdir -p "${SPACETIME_SERVER_DATA_DIR}"
+echo "SpacetimeDB data dir: ${SPACETIME_SERVER_DATA_DIR}"
 
 bash "${_repo_root}/scripts/ensure-spacetimedb-toolchain-ci.sh"
 export PATH="${HOME}/.local/bin:${HOME}/.spacetimedb:${HOME}/.spacetimedb/bin/current:${HOME}/.local/share/spacetime/bin/current:${PATH}"
