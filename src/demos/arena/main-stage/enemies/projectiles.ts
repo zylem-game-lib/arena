@@ -1,6 +1,5 @@
 import { Color, Vector3 } from 'three';
 import { createSphere } from '@zylem/game-lib/entity';
-import type { ArenaDbConnection } from '../../networking/arena-stdb-client';
 import type { ArenaMainStageHandle, AvatarRecord } from '../main-stage';
 import { avatarWorldPosition } from './shared';
 
@@ -25,8 +24,8 @@ interface SphereEntityLike {
 
 /**
  * In-flight projectile spawned by an iguano shooter. Kinematics are simulated
- * locally on the AI host (no STDB sync) — only the resulting `damage_player`
- * call hits the network.
+ * locally on every client (no STDB sync) — only the local player's own hit
+ * reaches the network via the `damagePlayer` callback.
  */
 export interface ProjectileSim {
 	entity: SphereEntityLike;
@@ -97,7 +96,7 @@ export function updateProjectiles(
 	stage: ArenaMainStageHandle['stage'],
 	projectiles: ProjectileList,
 	avatars: ReadonlyMap<bigint, AvatarRecord>,
-	conn: ArenaDbConnection,
+	damagePlayer: (av: AvatarRecord, amount: number) => void,
 	delta: number,
 ): void {
 	for (let i = projectiles.length - 1; i >= 0; i -= 1) {
@@ -129,10 +128,7 @@ export function updateProjectiles(
 			const dy = pt.y - next.y;
 			const dz = pt.z - next.z;
 			if (dx * dx + dy * dy + dz * dz <= p.hitRadius * p.hitRadius) {
-				void conn.reducers.damagePlayer({
-					deviceId: av.deviceId,
-					amount: p.damage,
-				});
+				damagePlayer(av, p.damage);
 				hit = true;
 				break;
 			}

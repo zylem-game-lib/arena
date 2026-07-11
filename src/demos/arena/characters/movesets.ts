@@ -11,7 +11,6 @@ export interface CharacterPlatformerOpts {
 	jumpForce: number;
 	maxJumps: number;
 	gravity: number;
-	groundRayLength: number;
 }
 
 /**

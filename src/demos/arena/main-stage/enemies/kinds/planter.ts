@@ -9,7 +9,7 @@ import {
 	type IguanoBehavior,
 } from '../shared';
 
-/** Planter: plants host-local proximity mines (`damage_player` only). */
+/** Planter: plants client-local proximity mines (`damage_player` only). */
 const PLANTER_MOVE_SPEED = 3.6;
 const PLANT_INTERVAL = 2.9;
 
@@ -54,7 +54,7 @@ export const PLANTER_BEHAVIOR: IguanoBehavior = {
 			const foot = entry.actor.body?.translation?.() ?? next;
 			env.spawnProximityMineAt(new Vector3(foot.x, foot.y, foot.z));
 			playEnemyOneShot(entry, 'planting');
-			entry.attackCooldown = PLANT_INTERVAL * (0.85 + Math.random() * 0.25);
+			entry.attackCooldown = PLANT_INTERVAL * (0.85 + entry.rng() * 0.25);
 		}
 	},
 };

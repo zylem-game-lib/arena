@@ -11,13 +11,6 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  enemyId: __t.u64().primaryKey().name("enemy_id"),
-  entityId: __t.u64().name("entity_id"),
-  kind: __t.string(),
-  hp: __t.u32(),
-  maxHp: __t.u32().name("max_hp"),
+  enemyKey: __t.string().primaryKey().name("enemy_key"),
   alive: __t.bool(),
-  anchorX: __t.f32().name("anchor_x"),
-  anchorY: __t.f32().name("anchor_y"),
-  anchorZ: __t.f32().name("anchor_z"),
 });

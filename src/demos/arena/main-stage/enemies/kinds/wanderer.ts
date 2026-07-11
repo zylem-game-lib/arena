@@ -27,8 +27,8 @@ interface WandererEntry extends EnemyEntry {
 
 /** Pick a fresh XZ destination inside the disc around `anchor`. */
 function pickWanderTarget(entry: EnemyEntry): Vector3 {
-	const angle = Math.random() * Math.PI * 2;
-	const radius = Math.sqrt(Math.random()) * WANDER_RADIUS;
+	const angle = entry.rng() * Math.PI * 2;
+	const radius = Math.sqrt(entry.rng()) * WANDER_RADIUS;
 	const x = entry.anchor.x + Math.cos(angle) * radius;
 	const z = entry.anchor.z + Math.sin(angle) * radius;
 	return new Vector3(x, entry.anchor.y, z);
@@ -59,7 +59,7 @@ export const WANDERER_BEHAVIOR: IguanoBehavior = {
 			w.wanderPauseUntil =
 				entry.time +
 				WANDER_PAUSE_MIN +
-				Math.random() * (WANDER_PAUSE_MAX - WANDER_PAUSE_MIN);
+				entry.rng() * (WANDER_PAUSE_MAX - WANDER_PAUSE_MIN);
 			w.wanderTarget = undefined;
 			syncIguanoLocomotion(entry, false);
 			return;

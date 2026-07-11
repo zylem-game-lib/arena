@@ -18,7 +18,6 @@ import type {
 	LocalTransformPayload,
 	PlayerEntity,
 } from './main-stage';
-import { createAiHost } from './ai-host';
 import { createEnemies, type EnemiesHandle } from './enemies';
 
 /**
@@ -165,11 +164,10 @@ function getNetworkTroubleshootingHint(): string {
  *    the stage).
  * 2. Connect + register this device as a player, then publish the
  *    chosen character class.
- * 3. Claim (or observe) the `ai_host` singleton so the cluster agrees
- *    on a single enemy-simulation owner.
- * 4. Subscribe to `player`, `entity_transform`, and `enemy`, mirroring
- *    remote avatars + enemy actors on the main stage and pushing the
- *    local player's pose every frame.
+ * 3. Subscribe to `player` and `entity_transform`, mirroring remote
+ *    avatars on the main stage and pushing the local player's pose
+ *    every frame. Enemies are simulated locally on every client (see
+ *    `enemies/`) and never touch the server.
  *
  * Returns a handle whose `reset()` disconnects and clears all
  * network-side state. Safe to call from `mainStage.onDestroy`.
@@ -183,7 +181,6 @@ export function bootstrapArenaNetwork(
 	let conn: ArenaDbConnection | null = null;
 	let tearingDown = false;
 	let netErrorBanner: ReturnType<typeof createText> | null = null;
-	const aiHost = createAiHost();
 	let enemies: EnemiesHandle | null = null;
 
 	const deviceId = config.deviceId.trim();
@@ -333,14 +330,13 @@ export function bootstrapArenaNetwork(
 		}
 
 		conn = connectArenaModule({
-			onConnect: (c, identity) => {
+			onConnect: (c) => {
 				void c.reducers.registerPlayer({
 					deviceId,
 					displayName: config.displayName,
 					colorU32: config.colorU32,
 					characterClass: registeredCharacterClass,
 				});
-				aiHost.init(c, identity);
 			},
 			onConnectError: (_ctx, err) => {
 				reportNetError('connect failed', err);
@@ -354,11 +350,10 @@ export function bootstrapArenaNetwork(
 
 		const currentConn = conn;
 
-		// Stand up the enemies module immediately so its STDB hooks are
-		// registered before we receive the initial subscription dump.
+		// Stand up the client-local enemies sim. It only needs the
+		// connection to report damage the local player takes.
 		enemies = createEnemies({
 			handle,
-			aiHost,
 			conn: currentConn,
 		});
 		handle.setAttackHitHandler(enemies.resolveAttackHit);
@@ -461,7 +456,6 @@ export function bootstrapArenaNetwork(
 			tearingDown = true;
 			enemies?.reset();
 			enemies = null;
-			aiHost.reset();
 			handle.setAttackHitHandler(null);
 			handle.setFallRespawnHandler(null);
 			conn?.disconnect();

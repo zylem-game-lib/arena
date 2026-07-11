@@ -41,7 +41,6 @@ export const HEALER_PLATFORMER_OPTS: CharacterPlatformerOpts = {
 	jumpForce: 16,
 	maxJumps: 1,
 	gravity: 9.82,
-	groundRayLength: 0.25,
 };
 
 /** Healer sits between tank and assassin on durability. */

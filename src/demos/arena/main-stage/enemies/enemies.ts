@@ -3,7 +3,6 @@
 import { Vector3 } from 'three';
 import { type UpdateContext } from '@zylem/game-lib/core';
 import type { ArenaDbConnection } from '../../networking/arena-stdb-client';
-import type { AiHostHandle } from '../ai-host';
 import type {
 	ArenaMainStageHandle,
 	AvatarRecord,
@@ -16,15 +15,13 @@ import {
 } from '../../characters/attack-effects';
 import {
 	avatarWorldPosition,
-	idOf,
 	IGUANO_FOOT_OFFSET,
-	pushHostTransform,
-	teleportEnemyActor,
 	type BehaviorEnv,
 	type EnemyActorEntity,
 	type EnemyEntry,
 	type NearestAvatar,
 } from './shared';
+import { createGuestEnemyRng, createWaveEnemyRng } from './seeded-rng';
 import {
 	clearProjectiles,
 	spawnLobProjectile,
@@ -41,13 +38,29 @@ import {
 	ALL_IGUANO_KINDS,
 	IGUANO_BEHAVIORS,
 	KIND_MAX_HP,
-	parseIguanoKind,
 	type IguanoKind,
 } from './kinds';
 
 const WAVE_KIND_ORDER: readonly IguanoKind[] = ALL_IGUANO_KINDS;
 const ENEMIES_PER_WAVE = WAVE_KIND_ORDER.length;
 const WAVE_RESPAWN_DELAY = 3;
+
+/**
+ * Poll cadence (seconds) for bootstrapping the shared wave counter when
+ * the `arena_wave` singleton hasn't arrived yet (fresh database or the
+ * initial subscription is still in flight).
+ */
+const WAVE_INIT_POLL_INTERVAL = 2;
+
+/** Deterministic registry key for a wave enemy. Identical on all clients. */
+function waveEnemyKey(waveIndex: number, slotIndex: number): string {
+	return `wave:${waveIndex}:${slotIndex}`;
+}
+
+/** Deterministic registry key for a per-player guest iguano. */
+function guestEnemyKey(playerEntityId: bigint): string {
+	return `guest:${playerEntityId}`;
+}
 
 /**
  * Per-shooter projectile tuning. Lives here (rather than in `kinds/shooter.ts`)
@@ -92,7 +105,6 @@ const ENEMY_ANCHORS_XZ: ReadonlyArray<{ x: number; z: number }> =
 
 export interface CreateEnemiesOptions {
 	handle: ArenaMainStageHandle;
-	aiHost: AiHostHandle;
 	conn: ArenaDbConnection;
 }
 
@@ -110,26 +122,33 @@ function moduloPositiveBigint(a: bigint, m: bigint): number {
 }
 
 /**
- * Wire the enemies subsystem into the arena main stage. Handles mirror-side
- * `entity_transform` subscription sync and AI-host locomotion plus client-only
- * VFX (lob projectiles, mines, explosion bursts) that call `damage_player` /
- * `damage_enemy`.
+ * Wire the enemies subsystem into the arena main stage.
+ *
+ * Enemy simulation (AI, motion, HP) runs locally on every client, seeded
+ * deterministically (see `seeded-rng.ts`) so peers see the same spawn
+ * layout and motion. The server holds no enemy state beyond a lightweight
+ * liveness ledger: the shared `arena_wave` counter keeps wave numbering
+ * (and therefore enemy keys + RNG seeds) aligned across clients, and the
+ * `enemy_registry` table records which enemies exist / have been killed so
+ * a kill on one client despawns the enemy everywhere and late joiners
+ * skip already-dead enemies.
  */
 export function createEnemies(opts: CreateEnemiesOptions): EnemiesHandle {
-	const { handle, aiHost, conn } = opts;
+	const { handle, conn } = opts;
 	const stage = handle.stage;
 	const burstStage = stage as unknown as StageAddTarget;
 	const sampleGroundHeight = handle.sampleGroundHeight;
 
-	const enemies = new Map<bigint, EnemyEntry>();
-	const enemiesByEntityId = new Map<bigint, EnemyEntry>();
+	const enemies = new Map<string, EnemyEntry>();
 	const avatars = new Map<bigint, AvatarRecord>();
 	const projectiles: ProjectileList = [];
 	const proximityMines: MineList = [];
 	const guestIguanoSpawnedForPlayerEntity = new Set<bigint>();
 
+	/** Wave index this client has spawned locally. 0 = not bootstrapped. */
+	let currentWave = 0;
+	let waveInitPollTimer = 0;
 	let waveRespawnTimer = 0;
-	let didKickoff = false;
 
 	function nearestAvatar(pos: {
 		x: number;
@@ -175,12 +194,59 @@ export function createEnemies(opts: CreateEnemiesOptions): EnemiesHandle {
 		return new Vector3(sx / n, yAvg / n, sz / n);
 	}
 
-	function killEnemyRows(entry: EnemyEntry, extraDamageCeiling = 5000): void {
-		const amount = KIND_MAX_HP[entry.iguanoKind] + extraDamageCeiling;
-		void conn.reducers.damageEnemy({
-			enemyId: entry.enemyId,
-			amount: Math.min(amount, 0xffff_ffff),
+	/**
+	 * Enemy damage sink: only the local player's client forwards its own
+	 * hits to the server. Every peer runs the same sim, so gating on
+	 * `isLocal` is what prevents N clients from applying the same hit N
+	 * times.
+	 */
+	function damagePlayer(av: AvatarRecord, amount: number): void {
+		if (!av.isLocal) return;
+		void conn.reducers.damagePlayer({
+			deviceId: av.deviceId,
+			amount,
 		});
+	}
+
+	function removeEnemyEntry(entry: EnemyEntry): void {
+		if (!enemies.delete(entry.enemyKey)) return;
+		if (stage.wrappedStage && entry.actor.uuid) {
+			stage.wrappedStage.removeEntityByUuid(entry.actor.uuid);
+		}
+	}
+
+	/**
+	 * Apply local damage; on death, despawn locally and report the kill to
+	 * the registry so every other client (and late joiners) despawn it too.
+	 */
+	function damageEnemyLocal(entry: EnemyEntry, amount: number): void {
+		if (!entry.alive) return;
+		entry.hp = Math.max(0, entry.hp - amount);
+		if (entry.hp > 0) return;
+		entry.alive = false;
+		removeEnemyEntry(entry);
+		void conn.reducers.reportEnemyKill({ enemyKey: entry.enemyKey });
+	}
+
+	function killEnemy(entry: EnemyEntry): void {
+		damageEnemyLocal(entry, entry.hp);
+	}
+
+	/**
+	 * Despawn triggered by a peer's kill arriving through the registry.
+	 * No re-report: the row is already dead on the server.
+	 */
+	function removeKilledByPeer(enemyKey: string): void {
+		const entry = enemies.get(enemyKey);
+		if (!entry) return;
+		entry.alive = false;
+		removeEnemyEntry(entry);
+	}
+
+	/** True when the registry says this enemy was already killed. */
+	function isRegisteredDead(enemyKey: string): boolean {
+		const row = conn.db.enemy_registry.enemy_key.find(enemyKey);
+		return row != null && !row.alive;
 	}
 
 	/** Heightfield-aware Y resolver shared by every behaviour `update`. */
@@ -189,7 +255,6 @@ export function createEnemies(opts: CreateEnemiesOptions): EnemiesHandle {
 	}
 
 	const env: BehaviorEnv = {
-		conn,
 		avatars,
 		sampleGroundHeight,
 		nearestAvatar,
@@ -199,7 +264,8 @@ export function createEnemies(opts: CreateEnemiesOptions): EnemiesHandle {
 			spawnLobProjectile(stage, projectiles, from, toward, LOB_TUNING),
 		spawnProximityMineAt: (pos) =>
 			spawnProximityMineAt(stage, proximityMines, pos, MINE_TUNING),
-		killEnemyRows,
+		killEnemy,
+		damagePlayer,
 		spawnParticleBurst: (worldPos, spec) =>
 			spawnParticleBurst(burstStage, worldPos, spec),
 		avatarWorldPosition,
@@ -214,129 +280,109 @@ export function createEnemies(opts: CreateEnemiesOptions): EnemiesHandle {
 		return createIguanoEnemyActor(anchor) as unknown as EnemyActorEntity;
 	}
 
-	function spawnEnemyEntry(row: {
-		enemyId: bigint | number;
-		entityId: bigint | number;
-		kind: string;
-		alive: boolean;
-		anchorX: number;
-		anchorY: number;
-		anchorZ: number;
-	}): EnemyEntry | null {
-		const enemyId = idOf(row.enemyId);
-		const entityId = idOf(row.entityId);
-		if (enemies.has(enemyId)) return enemies.get(enemyId)!;
-
-		const iguanoKind = parseIguanoKind(row.kind);
-		// Even with an authoritative anchorY in the row, prefer the local
-		// heightfield: peers may have spawned before they had the same bowl
-		// (rare, but keeps guests level even when joining mid-frame).
-		const groundY = groundedY(row.anchorX, row.anchorZ);
-		const anchor = new Vector3(row.anchorX, groundY, row.anchorZ);
+	/**
+	 * Spawn one enemy in the local sim and register it with the server's
+	 * liveness ledger (idempotent — the first client's insert wins). All
+	 * randomness (initial phase, attack jitter, later behaviour draws)
+	 * comes from the supplied deterministic `rng` stream so every client
+	 * builds the same enemy.
+	 */
+	function spawnEnemyLocal(
+		enemyKey: string,
+		iguanoKind: IguanoKind,
+		anchorXZ: { x: number; z: number },
+		rng: () => number,
+	): EnemyEntry {
+		const groundY = groundedY(anchorXZ.x, anchorXZ.z);
+		const anchor = new Vector3(anchorXZ.x, groundY, anchorXZ.z);
 		const actor = buildEnemyActor(anchor);
 		stage.add(actor as unknown as Parameters<typeof stage.add>[0]);
 
+		const maxHp = KIND_MAX_HP[iguanoKind];
 		const entry: EnemyEntry = {
-			enemyId,
-			entityId,
+			enemyKey,
 			iguanoKind,
 			actor,
-			alive: row.alive,
+			alive: true,
+			hp: maxHp,
+			maxHp,
+			rng,
 			anchor,
-			phase: Math.random() * Math.PI * 2,
+			phase: rng() * Math.PI * 2,
 			time: 0,
-			attackCooldown: 0.4 + Math.random() * 0.6,
-			pushTimer: 0,
+			attackCooldown: 0.4 + rng() * 0.6,
 		};
-		enemies.set(enemyId, entry);
-		enemiesByEntityId.set(entityId, entry);
+		enemies.set(entry.enemyKey, entry);
+		void conn.reducers.registerEnemy({ enemyKey });
 		return entry;
 	}
 
-	function removeEnemyEntry(enemyId: bigint): void {
-		const entry = enemies.get(enemyId);
-		if (!entry) return;
-		enemies.delete(enemyId);
-		enemiesByEntityId.delete(entry.entityId);
-		if (stage.wrappedStage && entry.actor.uuid) {
-			stage.wrappedStage.removeEntityByUuid(entry.actor.uuid);
-		}
-	}
-
-	/** Spawn one enemy of every archetype around the bowl on the AI host. */
-	function spawnWaveIfNeeded(): void {
-		if (!aiHost.isAiHost()) return;
-		if (enemies.size > 0) return;
-		if (waveRespawnTimer > 0) return;
-
+	/**
+	 * Spawn the given wave locally: one enemy of every archetype around
+	 * the bowl, skipping any the registry already marks as killed (late
+	 * joiners) or that this client already has.
+	 */
+	function spawnWave(nextWaveIndex: number): void {
+		currentWave = nextWaveIndex;
+		waveRespawnTimer = 0;
 		for (let i = 0; i < ENEMIES_PER_WAVE; i += 1) {
+			const enemyKey = waveEnemyKey(nextWaveIndex, i);
+			if (enemies.has(enemyKey)) continue;
+			if (isRegisteredDead(enemyKey)) continue;
 			const iguanoKind = WAVE_KIND_ORDER[i]!;
 			const anchor = ENEMY_ANCHORS_XZ[i % ENEMY_ANCHORS_XZ.length]!;
-			const anchorY = groundedY(anchor.x, anchor.z);
-			void conn.reducers.spawnEnemy({
-				kind: iguanoKind,
-				maxHp: KIND_MAX_HP[iguanoKind],
-				anchorX: anchor.x,
-				anchorY,
-				anchorZ: anchor.z,
-			});
+			spawnEnemyLocal(
+				enemyKey,
+				iguanoKind,
+				anchor,
+				createWaveEnemyRng(nextWaveIndex, i),
+			);
 		}
 	}
 
-	conn.db.enemy.onInsert((_ctx, row) => {
-		const entry = spawnEnemyEntry(row);
-		if (!entry) return;
-		const tr = conn.db.entity_transform.entity_id.find(entry.entityId);
-		if (tr) {
-			teleportEnemyActor(
-				entry,
-				{ x: tr.posX, y: tr.posY, z: tr.posZ },
-				{ x: tr.rotX, y: tr.rotY, z: tr.rotZ, w: tr.rotW },
-			);
-		}
+	function syncWave(row: { waveIndex: number }): void {
+		if (row.waveIndex === currentWave) return;
+		spawnWave(row.waveIndex);
+	}
+
+	conn.db.arena_wave.onInsert((_ctx, row) => {
+		syncWave(row);
+	});
+	conn.db.arena_wave.onUpdate((_ctx, _old, row) => {
+		syncWave(row);
 	});
 
-	conn.db.enemy.onUpdate((_ctx, _old, row) => {
-		const entry = enemies.get(idOf(row.enemyId));
-		if (!entry) return;
-		entry.alive = row.alive;
-		if (!row.alive && aiHost.isAiHost()) {
-			void conn.reducers.despawnEnemy({ enemyId: idOf(row.enemyId) });
-		}
+	conn.db.enemy_registry.onInsert((_ctx, row) => {
+		if (!row.alive) removeKilledByPeer(row.enemyKey);
 	});
-
-	conn.db.enemy.onDelete((_ctx, row) => {
-		removeEnemyEntry(idOf(row.enemyId));
-	});
-
-	conn.db.entity_transform.onUpdate((_ctx, _old, row) => {
-		const entry = enemiesByEntityId.get(idOf(row.entityId));
-		if (!entry) return;
-		if (aiHost.isAiHost()) return;
-		teleportEnemyActor(
-			entry,
-			{ x: row.posX, y: row.posY, z: row.posZ },
-			{ x: row.rotX, y: row.rotY, z: row.rotZ, w: row.rotW },
-		);
+	conn.db.enemy_registry.onUpdate((_ctx, _old, row) => {
+		if (!row.alive) removeKilledByPeer(row.enemyKey);
 	});
 
 	stage.onUpdate(({ delta }: UpdateContext<any>) => {
-		if (!didKickoff && aiHost.isAiHost()) {
-			didKickoff = true;
-			spawnWaveIfNeeded();
-		}
-
-		if (!aiHost.isAiHost()) return;
-
-		let aliveCount = 0;
-		for (const e of enemies.values()) {
-			if (e.alive) aliveCount += 1;
-		}
-		if (aliveCount === 0) {
+		if (currentWave === 0) {
+			// Bootstrap: adopt the shared wave counter once it arrives, or
+			// ask the server to create it on a fresh database. The reducer
+			// is first-wins, so every client can safely request it.
+			waveInitPollTimer -= delta;
+			if (waveInitPollTimer <= 0) {
+				waveInitPollTimer = WAVE_INIT_POLL_INTERVAL;
+				const row = conn.db.arena_wave.id.find(0);
+				if (row) {
+					syncWave(row);
+				} else {
+					void conn.reducers.advanceWave({ fromWave: 0 });
+				}
+			}
+		} else if (enemies.size === 0) {
+			// Wave cleared everywhere (kills propagate through the
+			// registry). Ask the server to advance; the `fromWave` guard
+			// makes simultaneous requests from multiple clients advance
+			// the counter exactly once.
 			waveRespawnTimer -= delta;
 			if (waveRespawnTimer <= 0) {
 				waveRespawnTimer = WAVE_RESPAWN_DELAY;
-				spawnWaveIfNeeded();
+				void conn.reducers.advanceWave({ fromWave: currentWave });
 			}
 		} else {
 			waveRespawnTimer = 0;
@@ -345,16 +391,15 @@ export function createEnemies(opts: CreateEnemiesOptions): EnemiesHandle {
 		for (const entry of enemies.values()) {
 			if (!entry.alive || entry.runnerCommitted) continue;
 			IGUANO_BEHAVIORS[entry.iguanoKind].update(entry, delta, env);
-			pushHostTransform(entry, delta, conn);
 		}
 
-		updateProjectiles(stage, projectiles, avatars, conn, delta);
+		updateProjectiles(stage, projectiles, avatars, damagePlayer, delta);
 		updateProximityMines(
 			stage,
 			burstStage,
 			proximityMines,
 			avatars,
-			conn,
+			damagePlayer,
 			MINE_TUNING,
 			delta,
 		);
@@ -368,23 +413,25 @@ export function createEnemies(opts: CreateEnemiesOptions): EnemiesHandle {
 			avatars.delete(entityId);
 		},
 		spawnGuestIguanoForNewPlayer(playerEntityId) {
-			if (!aiHost.isAiHost()) return;
 			if (guestIguanoSpawnedForPlayerEntity.has(playerEntityId)) return;
 			guestIguanoSpawnedForPlayerEntity.add(playerEntityId);
+			const enemyKey = guestEnemyKey(playerEntityId);
+			if (enemies.has(enemyKey)) return;
+			if (isRegisteredDead(enemyKey)) return;
+			// Kind + anchor derive from the player's server-assigned entity
+			// id, so every client spawns the same guest at the same spot.
 			const n = BigInt(ALL_IGUANO_KINDS.length);
 			const kindIdx = moduloPositiveBigint(playerEntityId, n);
 			const iguanoKind = ALL_IGUANO_KINDS[kindIdx]!;
 			const span = BigInt(ENEMY_ANCHORS_XZ.length);
 			const anchIdx = moduloPositiveBigint(playerEntityId, span);
 			const anchor = ENEMY_ANCHORS_XZ[anchIdx]!;
-			const anchorY = groundedY(anchor.x, anchor.z);
-			void conn.reducers.spawnEnemy({
-				kind: iguanoKind,
-				maxHp: KIND_MAX_HP[iguanoKind],
-				anchorX: anchor.x,
-				anchorY,
-				anchorZ: anchor.z,
-			});
+			spawnEnemyLocal(
+				enemyKey,
+				iguanoKind,
+				anchor,
+				createGuestEnemyRng(playerEntityId),
+			);
 		},
 		resolveAttackHit(info) {
 			const radiusSq = (1.5 + 0.5) ** 2;
@@ -396,10 +443,7 @@ export function createEnemies(opts: CreateEnemiesOptions): EnemiesHandle {
 				const dy = pos.y - info.position.y;
 				const dz = pos.z - info.position.z;
 				if (dx * dx + dy * dy + dz * dz > radiusSq) continue;
-				void conn.reducers.damageEnemy({
-					enemyId: entry.enemyId,
-					amount: info.damage ?? 5,
-				});
+				damageEnemyLocal(entry, info.damage ?? 5);
 			}
 		},
 		reset() {
@@ -409,7 +453,6 @@ export function createEnemies(opts: CreateEnemiesOptions): EnemiesHandle {
 				}
 			}
 			enemies.clear();
-			enemiesByEntityId.clear();
 			avatars.clear();
 			clearProjectiles(stage, projectiles);
 			clearMines(stage, proximityMines);

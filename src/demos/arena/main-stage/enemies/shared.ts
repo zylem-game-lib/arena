@@ -1,5 +1,4 @@
 import { Vector3 } from 'three';
-import type { ArenaDbConnection } from '../../networking/arena-stdb-client';
 import type { AvatarRecord } from '../main-stage';
 import type {
 	ParticleBurstSpec,
@@ -10,19 +9,30 @@ import type { IguanoKind } from './kinds';
 /**
  * Per-enemy state held by the orchestrator. Each iguano kind reads / mutates
  * the same record; kind-specific fields (`runnerCommitted`) are optional.
+ *
+ * Enemies are simulated entirely on the client; `hp` is tracked per client.
+ * `enemyKey` is a deterministic cross-client identifier (`wave:{n}:{slot}`
+ * or `guest:{playerEntityId}`) used only by the server-side kill registry
+ * so a kill on one client despawns the enemy everywhere.
  */
 export interface EnemyEntry {
-	enemyId: bigint;
-	entityId: bigint;
+	enemyKey: string;
 	iguanoKind: IguanoKind;
 	actor: EnemyActorEntity;
 	alive: boolean;
+	hp: number;
+	maxHp: number;
+	/**
+	 * Deterministic per-enemy RNG stream (see `seeded-rng.ts`). Behaviours
+	 * must draw all randomness from here — never `Math.random()` — so the
+	 * simulation stays identical across clients.
+	 */
+	rng: () => number;
 	/** Spawn anchor in world coordinates. `y` is refreshed each tick to track the bowl. */
 	anchor: Vector3;
 	phase: number;
 	time: number;
 	attackCooldown: number;
-	pushTimer: number;
 	/**
 	 * Wall-clock-ish time (in `entry.time` units) until which a one-shot
 	 * action clip (punch / bite / fireball / planting / runDestruct / pounce)
@@ -35,8 +45,9 @@ export interface EnemyEntry {
 }
 
 /**
- * Result of a nearest-avatar query: stable id (for STDB), the owning device id
- * (for `damage_player`), and the world-space position used to drive locomotion.
+ * Result of a nearest-avatar query: stable player entity id, the owning
+ * device id (for `damage_player`), and the world-space position used to
+ * drive locomotion.
  */
 export interface NearestAvatar {
 	entityId: bigint;
@@ -45,8 +56,9 @@ export interface NearestAvatar {
 }
 
 /**
- * Minimal physics + group surface needed by the AI host. `body` is optional
- * so the helpers cope with both Rapier-backed actors and runtime-only ones.
+ * Minimal physics + group surface needed by the local AI sim. `body` is
+ * optional so the helpers cope with both Rapier-backed actors and
+ * runtime-only ones.
  */
 export interface EnemyActorEntity {
 	uuid: string;
@@ -93,10 +105,7 @@ export interface EnemyActorEntity {
  */
 export { IGUANO_VISUAL_FEET_OFFSET as IGUANO_FOOT_OFFSET } from '../../characters/iguano-enemy';
 
-/** Frequency at which the AI host broadcasts an enemy's pose to peers. */
-export const HOST_TRANSFORM_PUSH_INTERVAL = 1 / 20;
-
-/** Spherical hit radius (squared inputs use `**2` inline) used by host attacks. */
+/** Spherical hit radius (squared inputs use `**2` inline) used by enemy attacks. */
 export const ENEMY_HIT_RADIUS = 1.35;
 
 /**
@@ -104,7 +113,6 @@ export const ENEMY_HIT_RADIUS = 1.35;
  * per-kind logic stay framework-agnostic — no direct DB / stage imports.
  */
 export interface BehaviorEnv {
-	conn: ArenaDbConnection;
 	avatars: ReadonlyMap<bigint, AvatarRecord>;
 	sampleGroundHeight: (x: number, z: number) => number;
 	nearestAvatar: (pos: { x: number; y: number; z: number }) => NearestAvatar | null;
@@ -112,7 +120,15 @@ export interface BehaviorEnv {
 	burstStage: StageAddTarget;
 	spawnLobProjectile: (from: Vector3, toward: Vector3) => void;
 	spawnProximityMineAt: (pos: Vector3) => void;
-	killEnemyRows: (entry: EnemyEntry, extraDamageCeiling?: number) => void;
+	/** Kill an enemy outright in the local sim (e.g. runner self-destruct). */
+	killEnemy: (entry: EnemyEntry) => void;
+	/**
+	 * Apply enemy damage to a player avatar. Only forwards to the server
+	 * when the avatar is the *local* player — each client reports only the
+	 * hits it takes itself, so peers running the same sim don't duplicate
+	 * `damage_player` calls.
+	 */
+	damagePlayer: (av: AvatarRecord, amount: number) => void;
 	spawnParticleBurst: (worldPos: Vector3, spec: ParticleBurstSpec) => void;
 	avatarWorldPosition: (av: AvatarRecord) => Vector3 | null;
 	groundedY: (x: number, z: number) => number;
@@ -126,11 +142,6 @@ export interface IguanoBehavior {
 	readonly kind: IguanoKind;
 	readonly maxHp: number;
 	update(entry: EnemyEntry, delta: number, env: BehaviorEnv): void;
-}
-
-/** Normalise STDB row ids (`bigint | number`) to a stable `bigint`. */
-export function idOf(id: bigint | number): bigint {
-	return BigInt(id);
 }
 
 /** Planar (XZ) distance squared between two points. */
@@ -263,34 +274,4 @@ export function moveTowardXZ(
 		nextXZ = new Vector3(current.x + dir.x, current.y, current.z + dir.z);
 	}
 	return new Vector3(nextXZ.x, groundedY(nextXZ.x, nextXZ.z), nextXZ.z);
-}
-
-/**
- * Throttled per-tick broadcast of an enemy's pose. The AI host owns enemy
- * simulation; guests only receive `set_enemy_transform` updates.
- */
-export function pushHostTransform(
-	entry: EnemyEntry,
-	delta: number,
-	conn: ArenaDbConnection,
-): void {
-	entry.pushTimer += delta;
-	if (entry.pushTimer < HOST_TRANSFORM_PUSH_INTERVAL) return;
-	entry.pushTimer = 0;
-	const tr = entry.actor.body?.translation?.() ?? {
-		x: entry.actor.group?.position.x ?? 0,
-		y: entry.actor.group?.position.y ?? 0,
-		z: entry.actor.group?.position.z ?? 0,
-	};
-	const q = entry.actor.group?.quaternion ?? { x: 0, y: 0, z: 0, w: 1 };
-	void conn.reducers.setEnemyTransform({
-		entityId: entry.entityId,
-		posX: tr.x,
-		posY: tr.y,
-		posZ: tr.z,
-		rotX: q.x,
-		rotY: q.y,
-		rotZ: q.z,
-		rotW: q.w,
-	});
 }

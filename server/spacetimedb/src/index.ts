@@ -13,12 +13,10 @@
 
 export { default } from './schema';
 
-export { claim_ai_host } from './reducers/ai_host';
 export {
-  damage_enemy,
-  despawn_enemy,
-  set_enemy_transform,
-  spawn_enemy,
+  advance_wave,
+  register_enemy,
+  report_enemy_kill,
 } from './reducers/enemies';
 export { client_disconnected } from './reducers/lifecycle';
 export {

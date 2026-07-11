@@ -1,125 +1,79 @@
 import { t } from 'spacetimedb/server';
 import { spacetime } from '../schema';
-import { isAiHost } from './ai_host';
+
+/** Primary key of the singleton row in the `arena_wave` table. */
+export const ARENA_WAVE_SINGLETON_ID = 0;
 
 /**
- * AI-host-only: insert a new enemy row + backing transform at the
- * supplied anchor position.
+ * Idempotent enemy registration. Every client calls this when it spawns
+ * an enemy in its local sim; the first call wins and duplicates are
+ * ignored, so the row simply marks "this enemy exists and is alive".
  */
-export const spawn_enemy = spacetime.reducer(
+export const register_enemy = spacetime.reducer(
   {
-    kind: t.string(),
-    max_hp: t.u32(),
-    anchor_x: t.f32(),
-    anchor_y: t.f32(),
-    anchor_z: t.f32(),
+    enemy_key: t.string(),
   },
-  (ctx, p) => {
-    if (!isAiHost(ctx)) {
+  (ctx, { enemy_key }) => {
+    if (ctx.db.enemy_registry.enemy_key.find(enemy_key) !== null) {
       return;
     }
-    const inserted = ctx.db.entity_transform.insert({
-      entity_id: 0n,
-      pos_x: p.anchor_x,
-      pos_y: p.anchor_y,
-      pos_z: p.anchor_z,
-      rot_x: 0,
-      rot_y: 0,
-      rot_z: 0,
-      rot_w: 1,
-      scale_x: 1,
-      scale_y: 1,
-      scale_z: 1,
-      anim_key: 'idle',
-      anim_pause_at_end: false,
-    });
-    ctx.db.enemy.insert({
-      enemy_id: 0n,
-      entity_id: inserted.entity_id,
-      kind: p.kind,
-      hp: p.max_hp,
-      max_hp: p.max_hp,
-      alive: true,
-      anchor_x: p.anchor_x,
-      anchor_y: p.anchor_y,
-      anchor_z: p.anchor_z,
-    });
-  },
-);
-
-/** AI-host-only: update an enemy's world pose from the host client's sim. */
-export const set_enemy_transform = spacetime.reducer(
-  {
-    entity_id: t.u64(),
-    pos_x: t.f32(),
-    pos_y: t.f32(),
-    pos_z: t.f32(),
-    rot_x: t.f32(),
-    rot_y: t.f32(),
-    rot_z: t.f32(),
-    rot_w: t.f32(),
-  },
-  (ctx, p) => {
-    if (!isAiHost(ctx)) {
-      return;
-    }
-    const cur = ctx.db.entity_transform.entity_id.find(p.entity_id);
-    if (cur === null) {
-      return;
-    }
-    ctx.db.entity_transform.entity_id.update({
-      ...cur,
-      pos_x: p.pos_x,
-      pos_y: p.pos_y,
-      pos_z: p.pos_z,
-      rot_x: p.rot_x,
-      rot_y: p.rot_y,
-      rot_z: p.rot_z,
-      rot_w: p.rot_w,
-    });
-  },
-);
-
-/** Any client may call this; the AI host will despawn the enemy once its tick observes `alive = false`. */
-export const damage_enemy = spacetime.reducer(
-  {
-    enemy_id: t.u64(),
-    amount: t.u32(),
-  },
-  (ctx, { enemy_id, amount }) => {
-    const row = ctx.db.enemy.enemy_id.find(enemy_id);
-    if (row === null || !row.alive) {
-      return;
-    }
-    const nextHp = row.hp > amount ? row.hp - amount : 0;
-    ctx.db.enemy.enemy_id.update({
-      ...row,
-      hp: nextHp,
-      alive: nextHp > 0,
-    });
+    ctx.db.enemy_registry.insert({ enemy_key, alive: true });
   },
 );
 
 /**
- * AI-host-only cleanup: remove an enemy row and its backing transform.
- * Called after fracture/death VFX finishes on the host.
+ * Mark an enemy dead. Any client may call this the moment its local sim
+ * kills the enemy; peers observe the update and despawn their copy. If
+ * the kill races ahead of registration, insert the row directly as dead
+ * so late joiners still skip it.
  */
-export const despawn_enemy = spacetime.reducer(
+export const report_enemy_kill = spacetime.reducer(
   {
-    enemy_id: t.u64(),
+    enemy_key: t.string(),
   },
-  (ctx, { enemy_id }) => {
-    if (!isAiHost(ctx)) {
-      return;
-    }
-    const row = ctx.db.enemy.enemy_id.find(enemy_id);
+  (ctx, { enemy_key }) => {
+    const row = ctx.db.enemy_registry.enemy_key.find(enemy_key);
     if (row === null) {
+      ctx.db.enemy_registry.insert({ enemy_key, alive: false });
       return;
     }
-    const tr = ctx.db.entity_transform.entity_id.find(row.entity_id);
-    if (tr !== null) {
-      ctx.db.entity_transform.delete(tr);
+    if (!row.alive) {
+      return;
     }
-    ctx.db.enemy.delete(row);
+    ctx.db.enemy_registry.enemy_key.update({ ...row, alive: false });
+  },
+);
+
+/**
+ * Advance the shared wave counter. `from_wave` guards against races: the
+ * increment only applies when the caller observed the current index, so
+ * multiple clients clearing the wave simultaneously advance it exactly
+ * once. `from_wave = 0` bootstraps the singleton on a fresh database.
+ *
+ * Registry rows from cleared waves are pruned here so the table only ever
+ * holds the current wave (plus per-player guests).
+ */
+export const advance_wave = spacetime.reducer(
+  {
+    from_wave: t.u32(),
+  },
+  (ctx, { from_wave }) => {
+    const cur = ctx.db.arena_wave.id.find(ARENA_WAVE_SINGLETON_ID);
+    if (cur === null) {
+      if (from_wave !== 0) {
+        return;
+      }
+      ctx.db.arena_wave.insert({ id: ARENA_WAVE_SINGLETON_ID, wave_index: 1 });
+      return;
+    }
+    if (cur.wave_index !== from_wave) {
+      return;
+    }
+    for (const row of ctx.db.enemy_registry.iter()) {
+      if (row.enemy_key.startsWith('wave:')) {
+        ctx.db.enemy_registry.delete(row);
+      }
+    }
+    ctx.db.arena_wave.id.update({ ...cur, wave_index: from_wave + 1 });
   },
 );

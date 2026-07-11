@@ -16,7 +16,7 @@
  * room between them.
  */
 import { globalStyle, style } from '@vanilla-extract/css';
-import { vars } from '@zylem/styles';
+import { vars } from '@zylem/ui';
 
 export const overlay = style({
   position: 'absolute',

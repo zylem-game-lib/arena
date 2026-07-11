@@ -164,7 +164,7 @@ export interface ArenaMainStageHandle {
 	/**
 	 * Register (or clear) a sink for local-player attack hits. The enemies
 	 * module binds this so each attack emission can resolve overlaps
-	 * against enemy positions and call `damageEnemy`.
+	 * against enemy positions and apply local enemy damage.
 	 */
 	setAttackHitHandler(handler: ReportAttackHit | null): void;
 	/**

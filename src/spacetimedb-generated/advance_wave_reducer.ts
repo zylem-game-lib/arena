@@ -11,12 +11,5 @@ import {
 } from "spacetimedb";
 
 export default {
-  entityId: __t.u64(),
-  posX: __t.f32(),
-  posY: __t.f32(),
-  posZ: __t.f32(),
-  rotX: __t.f32(),
-  rotY: __t.f32(),
-  rotZ: __t.f32(),
-  rotW: __t.f32(),
+  fromWave: __t.u32(),
 };

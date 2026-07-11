@@ -46,7 +46,6 @@ export const TANK_PLATFORMER_OPTS: CharacterPlatformerOpts = {
 	jumpForce: 14,
 	maxJumps: 1,
 	gravity: 9.82,
-	groundRayLength: 0.25,
 };
 
 /** Tank is the tanky class — higher HP pool at the cost of mobility. */

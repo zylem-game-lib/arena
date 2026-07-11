@@ -44,18 +44,20 @@ export const IGUANO_VISUAL_FEET_OFFSET =
 	IGUANO_ENEMY_COLLISION.size.y / 2 + 0.02;
 
 /**
- * Build the networked hostile Iguano actor: skeletal clips from the arena
+ * Build the client-local hostile Iguano actor: skeletal clips from the arena
  * pack support locomotion plus ranged (`fireball`), melee (`punch` / `bite`),
- * mine planting (`planting`), and suicidal rush (`runDestruct`) clips.
+ * mine planting (`planting`), and suicidal rush (`runDestruct`) clips. The
+ * actor is simulated deterministically on every client — nothing about it
+ * is stored on the server.
  *
  * Idle / locomotion clips share keys with playable characters so callers can
  * reuse simple `idle` · `walking` toggles regardless of skeletal layout.
  *
- * `stripRootMotionY: true` is critical for the AI-driven host: every
+ * `stripRootMotionY: true` is critical for the AI-driven actor: every
  * locomotion clip ships with baked root-bone Y keyframes that would
  * otherwise yank the visible model up and down (and fight the AI's
  * `setTranslation` calls) once the mixer comes online. With the Y track
- * stripped, the host owns the iguano's vertical position outright.
+ * stripped, the AI owns the iguano's vertical position outright.
  */
 export function createIguanoEnemyActor(anchor: { x: number; y: number; z: number }) {
 	const actor = createActor({

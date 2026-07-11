@@ -1,6 +1,5 @@
 import { Color, Vector3 } from 'three';
 import { createSphere } from '@zylem/game-lib/entity';
-import type { ArenaDbConnection } from '../../networking/arena-stdb-client';
 import type { ArenaMainStageHandle, AvatarRecord } from '../main-stage';
 import {
 	spawnParticleBurst,
@@ -29,7 +28,8 @@ interface SphereEntityLike {
 
 /**
  * Active proximity mine planted by an iguano planter. Like projectiles, the
- * sim runs locally on the AI host; only `damage_player` reaches the network.
+ * sim runs locally on every client; only the local player's own hit reaches
+ * the network via the `damagePlayer` callback.
  */
 export interface ProximityMine {
 	entity: SphereEntityLike;
@@ -82,7 +82,7 @@ export function updateProximityMines(
 	burstStage: StageAddTarget,
 	mines: MineList,
 	avatars: ReadonlyMap<bigint, AvatarRecord>,
-	conn: ArenaDbConnection,
+	damagePlayer: (av: AvatarRecord, amount: number) => void,
 	tuning: MineTuning,
 	delta: number,
 ): void {
@@ -134,10 +134,7 @@ export function updateProximityMines(
 				const dz = pt.z - worldMine.z;
 				const blastRadius = tuning.triggerRadius + 0.6;
 				if (dx * dx + dy * dy + dz * dz <= blastRadius * blastRadius) {
-					void conn.reducers.damagePlayer({
-						deviceId: av.deviceId,
-						amount: tuning.damage,
-					});
+					damagePlayer(av, tuning.damage);
 				}
 			}
 		}

@@ -19,7 +19,7 @@ const RUNNER_BLAST_DAMAGE = 34;
 
 /**
  * Detonate the runner: emit a particle burst, damage everyone inside the
- * blast radius, swap to the death animation, and despawn the row. Idempotent
+ * blast radius, swap to the death animation, and despawn locally. Idempotent
  * via `runnerCommitted`.
  */
 function explodeRunner(
@@ -47,14 +47,11 @@ function explodeRunner(
 			dx * dx + dy * dy + dz * dz <=
 			RUNNER_BLAST_RADIUS * RUNNER_BLAST_RADIUS
 		) {
-			void env.conn.reducers.damagePlayer({
-				deviceId: av.deviceId,
-				amount: RUNNER_BLAST_DAMAGE,
-			});
+			env.damagePlayer(av, RUNNER_BLAST_DAMAGE);
 		}
 	}
 	playEnemyOneShot(entry, 'runDestruct');
-	env.killEnemyRows(entry);
+	env.killEnemy(entry);
 }
 
 /**

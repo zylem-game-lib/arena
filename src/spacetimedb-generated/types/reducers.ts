@@ -6,27 +6,23 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
-import ClaimAiHostReducer from "../claim_ai_host_reducer";
-import DamageEnemyReducer from "../damage_enemy_reducer";
+import AdvanceWaveReducer from "../advance_wave_reducer";
 import DamagePlayerReducer from "../damage_player_reducer";
-import DespawnEnemyReducer from "../despawn_enemy_reducer";
 import HealPlayerReducer from "../heal_player_reducer";
+import RegisterEnemyReducer from "../register_enemy_reducer";
 import RegisterPlayerReducer from "../register_player_reducer";
+import ReportEnemyKillReducer from "../report_enemy_kill_reducer";
 import RespawnPlayerReducer from "../respawn_player_reducer";
-import SetEnemyTransformReducer from "../set_enemy_transform_reducer";
 import SetEntityTransformReducer from "../set_entity_transform_reducer";
 import SetPlayerCharacterClassReducer from "../set_player_character_class_reducer";
-import SpawnEnemyReducer from "../spawn_enemy_reducer";
 
-export type ClaimAiHostParams = __Infer<typeof ClaimAiHostReducer>;
-export type DamageEnemyParams = __Infer<typeof DamageEnemyReducer>;
+export type AdvanceWaveParams = __Infer<typeof AdvanceWaveReducer>;
 export type DamagePlayerParams = __Infer<typeof DamagePlayerReducer>;
-export type DespawnEnemyParams = __Infer<typeof DespawnEnemyReducer>;
 export type HealPlayerParams = __Infer<typeof HealPlayerReducer>;
+export type RegisterEnemyParams = __Infer<typeof RegisterEnemyReducer>;
 export type RegisterPlayerParams = __Infer<typeof RegisterPlayerReducer>;
+export type ReportEnemyKillParams = __Infer<typeof ReportEnemyKillReducer>;
 export type RespawnPlayerParams = __Infer<typeof RespawnPlayerReducer>;
-export type SetEnemyTransformParams = __Infer<typeof SetEnemyTransformReducer>;
 export type SetEntityTransformParams = __Infer<typeof SetEntityTransformReducer>;
 export type SetPlayerCharacterClassParams = __Infer<typeof SetPlayerCharacterClassReducer>;
-export type SpawnEnemyParams = __Infer<typeof SpawnEnemyReducer>;
 

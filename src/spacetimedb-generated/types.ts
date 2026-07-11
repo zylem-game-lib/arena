@@ -10,24 +10,17 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export const AiHost = __t.object("AiHost", {
+export const ArenaWave = __t.object("ArenaWave", {
   id: __t.u8(),
-  identity: __t.identity(),
+  waveIndex: __t.u32(),
 });
-export type AiHost = __Infer<typeof AiHost>;
+export type ArenaWave = __Infer<typeof ArenaWave>;
 
-export const Enemy = __t.object("Enemy", {
-  enemyId: __t.u64(),
-  entityId: __t.u64(),
-  kind: __t.string(),
-  hp: __t.u32(),
-  maxHp: __t.u32(),
+export const EnemyRegistry = __t.object("EnemyRegistry", {
+  enemyKey: __t.string(),
   alive: __t.bool(),
-  anchorX: __t.f32(),
-  anchorY: __t.f32(),
-  anchorZ: __t.f32(),
 });
-export type Enemy = __Infer<typeof Enemy>;
+export type EnemyRegistry = __Infer<typeof EnemyRegistry>;
 
 export const EntityTransform = __t.object("EntityTransform", {
   entityId: __t.u64(),

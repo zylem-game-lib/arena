@@ -51,7 +51,7 @@ const COMBO_RESET_SECONDS = 0.6;
 /**
  * Forward hit test callback emitted by the combat controller when an
  * attack's "active frames" hit (see `ATTACK_HIT_FRACTION`). Main stage
- * resolves overlaps against enemies and fires `damageEnemy` reducers.
+ * resolves overlaps against enemies and applies local enemy damage.
  */
 export type ReportAttackHit = (info: {
 	/** World-space centre of the hit sphere. */

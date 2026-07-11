@@ -82,7 +82,7 @@ export const SHOOTER_BEHAVIOR: IguanoBehavior = {
 				tgt.pos.clone(),
 			);
 			playEnemyOneShot(entry, 'fireball');
-			entry.attackCooldown = SHOOT_INTERVAL * (0.88 + Math.random() * 0.2);
+			entry.attackCooldown = SHOOT_INTERVAL * (0.88 + entry.rng() * 0.2);
 		}
 	},
 };

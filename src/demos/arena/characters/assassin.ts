@@ -45,7 +45,6 @@ export const ASSASSIN_PLATFORMER_OPTS: CharacterPlatformerOpts = {
 	jumpForce: 22,
 	maxJumps: 1,
 	gravity: 9.82,
-	groundRayLength: 0.25,
 };
 
 /** Assassin is glass-cannon: lowest HP pool, highest mobility and burst. */

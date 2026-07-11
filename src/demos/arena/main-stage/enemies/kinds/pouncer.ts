@@ -75,10 +75,7 @@ export const POUNCER_BEHAVIOR: IguanoBehavior = {
 						dx * dx + dy * dy + dz * dz <=
 						ENEMY_HIT_RADIUS * ENEMY_HIT_RADIUS
 					) {
-						void env.conn.reducers.damagePlayer({
-							deviceId: av.deviceId,
-							amount: POUNCE_DAMAGE,
-						});
+						env.damagePlayer(av, POUNCE_DAMAGE);
 						p.pounceHitApplied = true;
 						break;
 					}

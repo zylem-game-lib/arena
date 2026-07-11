@@ -11,5 +11,5 @@ import {
 } from "spacetimedb";
 
 export default {
-  enemyId: __t.u64(),
+  enemyKey: __t.string(),
 };

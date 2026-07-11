@@ -100,10 +100,7 @@ export const FIGHTER_BEHAVIOR: IguanoBehavior = {
 					dx * dx + dy * dy + dz * dz <=
 					ENEMY_HIT_RADIUS * ENEMY_HIT_RADIUS
 				) {
-					void env.conn.reducers.damagePlayer({
-						deviceId: av.deviceId,
-						amount: FIGHTER_MELEE_DAMAGE,
-					});
+					env.damagePlayer(av, FIGHTER_MELEE_DAMAGE);
 					break;
 				}
 			}

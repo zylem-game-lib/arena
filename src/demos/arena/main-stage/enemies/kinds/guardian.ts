@@ -95,10 +95,7 @@ export const GUARDIAN_BEHAVIOR: IguanoBehavior = {
 						dx * dx + dy * dy + dz * dz <=
 						ENEMY_HIT_RADIUS * ENEMY_HIT_RADIUS
 					) {
-						void env.conn.reducers.damagePlayer({
-							deviceId: av.deviceId,
-							amount: GUARDIAN_BITE_DAMAGE,
-						});
+						env.damagePlayer(av, GUARDIAN_BITE_DAMAGE);
 						break;
 					}
 				}

@@ -12,5 +12,5 @@ import {
 
 export default __t.row({
   id: __t.u8().primaryKey(),
-  identity: __t.identity(),
+  waveIndex: __t.u32().name("wave_index"),
 });
