@@ -3,9 +3,9 @@ import { render } from 'solid-js/web';
 import { subscribe } from 'valtio/vanilla';
 import { ZylemGameElement } from '@zylem/game-lib/web-components';
 import { zylemEventBus, type GameLoadingPayload } from '@zylem/game-lib/events';
-import createArena from './demos/arena/arena';
-import ArenaLobby from './demos/arena/ArenaLobby/ArenaLobby';
-import { arenaLobbyStore } from './demos/arena/networking/arena-lobby-store';
+import createArena from './arena/arena';
+import ArenaLobby from './arena/ArenaLobby/ArenaLobby';
+import { arenaLobbyStore } from './arena/networking/arena-lobby-store';
 import './styles.css';
 
 if (!customElements.get('zylem-game')) {
@@ -99,4 +99,3 @@ const root = document.getElementById('root');
 if (root) {
 	render(() => <App />, root);
 }
-

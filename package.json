@@ -32,21 +32,19 @@
     "@solidjs/router": "^0.16.1",
     "@vanilla-extract/css": "^1.21.1",
     "@zylem/assets": "^0.1.1",
-    "@zylem/behaviors": "^0.4.1",
-    "@zylem/game-lib": "^0.7.0",
-    "@zylem/ui": "^0.1.1",
+    "@zylem/game-lib": "link:../zylem/packages/game-lib",
     "http-proxy": "^1.18.1",
     "nanoid": "^5.1.16",
     "solid-js": "^1.9.14",
     "spacetimedb": "2.6.1",
-    "three": "^0.184.0",
+    "three": "^0.185.0",
     "valtio": "^2.3.2"
   },
   "devDependencies": {
     "@clack/prompts": "^1.7.0",
     "@types/http-proxy": "^1.17.17",
     "@types/node": "^22.10.0",
-    "@types/three": "0.184.1",
+    "@types/three": "0.185.3",
     "@vanilla-extract/vite-plugin": "^5.2.4",
     "cross-env": "^10.1.0",
     "typescript": "^6.0.3",
@@ -54,15 +52,10 @@
     "vite-plugin-glsl": "^1.6.0",
     "vite-plugin-solid": "^2.11.12"
   },
-  "pnpm": {
-    "overrides": {
-      "@dimforge/rapier3d-compat": "0.11.2"
-    },
-    "peerDependencyRules": {
-      "allowedVersions": {
-        "@zylem/behaviors>three": "0.184.0"
-      }
-    }
-  },
+	"pnpm": {
+		"overrides": {
+			"@dimforge/rapier3d-compat": "0.11.2"
+		}
+	},
   "packageManager": "pnpm@10.33.0"
 }

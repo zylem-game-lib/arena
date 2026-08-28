@@ -63,6 +63,13 @@ export default defineConfig({
 	},
 	assetsInclude: ['**/*.fbx', '**/*.gltf', '**/*.glb', '**/*.wasm'],
 	resolve: {
+		// Prefer a single physical copy of these packages. @zylem/behaviors
+		// is no longer a direct dependency: it reaches us only through
+		// game-lib, so there is one install and the cooldown store is
+		// shared without further coaxing.
+		// Do NOT alias `@zylem/behaviors` to a folder path — that bypasses
+		// package `exports` and breaks subpath imports like `/cooldown`.
+		dedupe: ['@zylem/behaviors', 'valtio', 'three'],
 		alias: [
 			// Solid-only project: route valtio's React-coupled main entry
 			// to its framework-agnostic vanilla entry so optional peer dep
